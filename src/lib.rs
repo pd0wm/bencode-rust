@@ -30,15 +30,14 @@ fn length(i: &[u8]) -> IResult<&[u8], usize> {
 
 fn string(i: &[u8]) -> IResult<&[u8], String> {
     let (left, len) = length(i)?;
-    let u8_res = take(len);
-    let vec_res = map(u8_res, |s: &[u8]| s.to_vec());
-    map_res(vec_res, String::from_utf8)(left)
+    let result = take(len);
+    let result = map(result, |s: &[u8]| s.to_vec());
+    map_res(result, String::from_utf8)(left)
 }
 
 fn list(i: &[u8]) -> IResult<&[u8], Vec<BValue>> {
     let values = many1(value);
-    let values = preceded(char('l'), values);
-    terminated(values, char('e'))(i)
+    preceded(char('l'), terminated(values, char('e')))(i)
 }
 
 fn value(i: &[u8]) -> IResult<&[u8], BValue> {
