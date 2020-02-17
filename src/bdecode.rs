@@ -23,7 +23,7 @@ impl BValue {
     pub fn get_list(&self) -> &Vec<BValue> {
         match self {
             BValue::BList(list) => list,
-            _ => panic!("Failed to get dict"),
+            _ => panic!("Failed to get list"),
         }
     }
 
