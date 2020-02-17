@@ -1,1 +1,1 @@
-mod bdecode;
+pub mod bdecode;

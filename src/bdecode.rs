@@ -13,10 +13,44 @@ use nom::sequence::{preceded, terminated, pair};
 
 #[derive(Debug,PartialEq)]
 pub enum BValue {
-    BString(String),
+    BBytes(Vec<u8>),
     BNumber(i64),
     BList(Vec<BValue>),
     BDict(HashMap<String, BValue>),
+}
+
+impl BValue {
+    pub fn get_list(&self) -> &Vec<BValue> {
+        match self {
+            BValue::BList(list) => list,
+            _ => panic!("Failed to get dict"),
+        }
+    }
+
+    pub fn get_dict(&self) -> &HashMap<String, BValue> {
+        match self {
+            BValue::BDict(dict) => dict,
+            _ => panic!("Failed to get dict"),
+        }
+    }
+
+    pub fn get_number(&self) -> &i64 {
+        match self {
+            BValue::BNumber(n) => n,
+            _ => panic!("Failed to get number"),
+        }
+    }
+
+    pub fn get_bytes(&self) -> &Vec<u8> {
+        match self {
+            BValue::BBytes(bytes) => bytes,
+            _ => panic!("Failed to get bytes"),
+        }
+    }
+
+    pub fn get_string(&self) -> &str {
+        from_utf8(self.get_bytes()).unwrap()
+    }
 }
 
 fn parse_number(i: &[u8]) -> IResult<&[u8], i64> {
@@ -37,24 +71,30 @@ fn parse_string(i: &[u8]) -> IResult<&[u8], String> {
     map_res(result, String::from_utf8)(left)
 }
 
+fn parse_bytes(i: &[u8]) -> IResult<&[u8], Vec<u8>> {
+    let (left, len) = parse_length(i)?;
+    let result = take(len);
+    map(result, |s: &[u8]| s.to_vec())(left)
+}
+
 fn parse_list(i: &[u8]) -> IResult<&[u8], Vec<BValue>> {
-    let values = many1(parse_value);
+    let values = many1(parse);
     preceded(char('l'), terminated(values, char('e')))(i)
 }
 
 fn parse_dict(i: &[u8]) -> IResult<&[u8], HashMap<String, BValue>> {
-    let kv = pair(parse_string, parse_value);
+    let kv = pair(parse_string, parse);
     let kv = many1(kv);
     let kv = terminated(preceded(char('d'), kv), char('e'));
     map(kv, |s| s.into_iter().collect())(i)
 }
 
-pub fn parse_value(i: &[u8]) -> IResult<&[u8], BValue> {
+pub fn parse(i: &[u8]) -> IResult<&[u8], BValue> {
     let bnumber = map(parse_number, BValue::BNumber);
-    let bstring = map(parse_string, BValue::BString);
+    let bbytes = map(parse_bytes, BValue::BBytes);
     let blist = map(parse_list, BValue::BList);
     let bdict = map(parse_dict, BValue::BDict);
-    alt((bnumber, bstring, blist, bdict))(i)
+    alt((bnumber, bbytes, blist, bdict))(i)
 }
 
 
@@ -64,27 +104,27 @@ mod tests {
 
     #[test]
     fn test_parse_number() {
-        assert_eq!(parse_value(&b"i3e"[..]), Ok((&b""[..], BValue::BNumber(3))));
-        assert_eq!(parse_value(&b"i-3e"[..]), Ok((&b""[..], BValue::BNumber(-3))));
+        assert_eq!(parse(&b"i3e"[..]), Ok((&b""[..], BValue::BNumber(3))));
+        assert_eq!(parse(&b"i-3e"[..]), Ok((&b""[..], BValue::BNumber(-3))));
     }
 
     #[test]
-    fn test_parse_string() {
-        assert_eq!(parse_value(&b"12:Hello World!"[..]), Ok((&b""[..], BValue::BString("Hello World!".to_string()))));
+    fn test_parse_bytes() {
+        assert_eq!(parse(&b"12:Hello World!"[..]), Ok((&b""[..], BValue::BBytes("Hello World!".as_bytes().to_vec()))));
     }
 
     #[test]
     fn test_parse_list() {
-        let expected = BValue::BList(vec![BValue::BString("spam".to_string()), BValue::BString("eggs".to_string())]);
-        assert_eq!(parse_value(&b"l4:spam4:eggse"[..]), Ok((&b""[..], expected)));
+        let expected = BValue::BList(vec![BValue::BBytes("spam".as_bytes().to_vec()), BValue::BBytes("eggs".as_bytes().to_vec())]);
+        assert_eq!(parse(&b"l4:spam4:eggse"[..]), Ok((&b""[..], expected)));
     }
 
     #[test]
     fn test_parse_dict() {
         let mut expected : HashMap<String, BValue> = HashMap::new();
-        expected.entry("cow".to_string()).or_insert(BValue::BString("moo".to_string()));
-        expected.entry("spam".to_string()).or_insert(BValue::BString("eggs".to_string()));
+        expected.entry("cow".to_string()).or_insert(BValue::BBytes("moo".as_bytes().to_vec()));
+        expected.entry("spam".to_string()).or_insert(BValue::BBytes("eggs".as_bytes().to_vec()));
 
-        assert_eq!(parse_value(&b"d3:cow3:moo4:spam4:eggse"[..]), Ok((&b""[..], BValue::BDict(expected))));
+        assert_eq!(parse(&b"d3:cow3:moo4:spam4:eggse"[..]), Ok((&b""[..], BValue::BDict(expected))));
     }
 }
