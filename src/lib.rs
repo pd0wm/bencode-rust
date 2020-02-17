@@ -3,17 +3,18 @@ extern crate nom;
 use std::str::from_utf8;
 
 use nom::IResult;
-use nom::character::complete::{char, digit1};
-use nom::bytes::complete::take;
-
-use nom::combinator::{map_res, opt, recognize, map};
-use nom::sequence::{preceded, terminated, tuple};
 use nom::branch::alt;
+use nom::bytes::complete::take;
+use nom::character::complete::{char, digit1};
+use nom::combinator::{map_res, opt, recognize, map};
+use nom::multi::many1;
+use nom::sequence::{preceded, terminated, tuple};
 
 #[derive(Debug,PartialEq)]
 pub enum BValue {
     BString(String),
     BNumber(i64),
+    BList(Vec<BValue>),
 }
 
 fn number(i: &[u8]) -> IResult<&[u8], i64> {
@@ -22,22 +23,29 @@ fn number(i: &[u8]) -> IResult<&[u8], i64> {
     terminated(preceded(char('i'), parsed_num), char('e'))(i)
 }
 
-fn string_len(i: &[u8]) -> IResult<&[u8], usize> {
+fn length(i: &[u8]) -> IResult<&[u8], usize> {
     let len = terminated(digit1, char(':'));
     map_res(len, |s: &[u8]| from_utf8(s).unwrap().parse::<usize>())(i)
 }
 
 fn string(i: &[u8]) -> IResult<&[u8], String> {
-    let (left, len) = string_len(i)?;
+    let (left, len) = length(i)?;
     let u8_res = take(len);
     let vec_res = map(u8_res, |s: &[u8]| s.to_vec());
     map_res(vec_res, String::from_utf8)(left)
 }
 
+fn list(i: &[u8]) -> IResult<&[u8], Vec<BValue>> {
+    let values = many1(value);
+    let values = preceded(char('l'), values);
+    terminated(values, char('e'))(i)
+}
+
 fn value(i: &[u8]) -> IResult<&[u8], BValue> {
     let bnumber = map(number, BValue::BNumber);
     let bstring = map(string, BValue::BString);
-    alt((bnumber, bstring))(i)
+    let blist = map(list, BValue::BList);
+    alt((bnumber, bstring, blist))(i)
 }
 
 
@@ -56,7 +64,7 @@ mod tests {
 
     #[test]
     fn parse_string() {
-        assert_eq!(string_len(&b"12:Hello World!"[..]), Ok((&b"Hello World!"[..], 12)));
+        assert_eq!(length(&b"12:Hello World!"[..]), Ok((&b"Hello World!"[..], 12)));
         assert_eq!(string(&b"12:Hello World!"[..]), Ok((&b""[..], "Hello World!".to_string())));
         assert_eq!(string(&b"15:Hello World!"[..]), Err(Error((&b"Hello World!"[..], ErrorKind::Eof))));
     }
@@ -65,5 +73,11 @@ mod tests {
     fn parse_value() {
         assert_eq!(value(&b"i3e"[..]), Ok((&b""[..], BValue::BNumber(3))));
         assert_eq!(value(&b"12:Hello World!"[..]), Ok((&b""[..], BValue::BString("Hello World!".to_string()))));
+    }
+
+    #[test]
+    fn parse_list() {
+        let result = BValue::BList(vec![BValue::BString("spam".to_string()), BValue::BString("eggs".to_string())]);
+        assert_eq!(value(&b"l4:spam4:eggse"[..]), Ok((&b""[..], result)));
     }
 }
