@@ -65,10 +65,7 @@ fn parse_length(i: &[u8]) -> IResult<&[u8], usize> {
 }
 
 fn parse_string(i: &[u8]) -> IResult<&[u8], String> {
-    let (left, len) = parse_length(i)?;
-    let result = take(len);
-    let result = map(result, |s: &[u8]| s.to_vec());
-    map_res(result, String::from_utf8)(left)
+    map_res(parse_bytes, String::from_utf8)(i)
 }
 
 fn parse_bytes(i: &[u8]) -> IResult<&[u8], Vec<u8>> {
